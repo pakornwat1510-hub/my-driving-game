@@ -278,9 +278,9 @@ var gearData = {
 var phys = {
   velocity: 0, steerAngle: 0, heading: Math.PI / 2,
   x: 82, z: 0,
-  maxSpeedPerGear: [0, 30, 70, 120, 170, 215, 255], // km/h per gear (gear1 slowest → gear6 = 255)
-  acceleration: 0.36,
-  braking: 0.32, friction: 0.985,
+  maxSpeedPerGear: [0, 14, 28, 42, 58, 72, 80], // km/h per gear: 1 < 2 < 3 < 4 < 5 < 6, max 80
+  acceleration: 0.22,
+  braking: 0.32, friction: 0.965,
   steerSpeed: 0.042, steerReturn: 0.08
 };
 
@@ -296,6 +296,7 @@ document.addEventListener('keydown', function(e) {
 document.addEventListener('keyup', function(e) { keys[e.code] = false; });
 
 var trackPoints = [];
+var worldColliders = [];
 var camSmooth, camLookSmooth, camInit = false;
 
 // ========== INIT ==========
@@ -394,7 +395,7 @@ function buildSky() {
 
 // ========== WORLD ==========
 function buildWorld() {
-  // Ground
+  worldColliders = [];
   var groundMat = new THREE.MeshStandardMaterial({
     color: 0x3d8c32, roughness: 0.95, metalness: 0.0
   });
@@ -403,33 +404,117 @@ function buildWorld() {
   ground.receiveShadow = true;
   scene.add(ground);
 
+  var cityBase = new THREE.Mesh(
+    new THREE.PlaneGeometry(1000, 1000, 1, 1),
+    new THREE.MeshStandardMaterial({ color: 0x5d6c43, roughness: 1.0, metalness: 0.0 })
+  );
+  cityBase.rotation.x = -Math.PI / 2;
+  cityBase.position.y = 0.012;
+  cityBase.receiveShadow = true;
+  scene.add(cityBase);
+
   buildTrack();
-
-  // Trees (varied)
-  var treePositions = [];
-  for (var i = 0; i < 120; i++) {
-    var tx = (Math.random() - 0.5) * 440;
-    var tz = (Math.random() - 0.5) * 440;
-    if (isOnTrack(tx, tz)) continue;
-    treePositions.push([tx, tz, 0.5 + Math.random() * 0.9]);
-  }
-  treePositions.forEach(function(t) { addTree(t[0], t[1], t[2]); });
-
-  // Buildings ring
-  for (var i = 0; i < 28; i++) {
-    var ang = (i / 28) * Math.PI * 2;
-    var r = 170 + Math.random() * 100;
-    addBuilding(Math.cos(ang) * r, Math.sin(ang) * r);
-  }
-
-  // Barriers / cones near track
-  addTrackBarriers();
+  buildCityRoads();
+  addParkArea(0, 180, 80, 80);
+  addParkArea(-220, -20, 70, 70);
+  addCityDistrict(-150, 90, 0.85);
+  addCityDistrict(140, 120, 0.95);
+  addCityDistrict(-170, -120, 0.72);
+  addCityDistrict(155, -110, 0.86);
+  addStreetLights();
 }
 
 function isOnTrack(x, z) {
   var a = 82, b = 54;
   var norm = (x * x) / (a * a) + (z * z) / (b * b);
   return norm > 0.6 && norm < 1.5;
+}
+
+function buildCityRoads() {
+  var roads = [
+    { x: 0, z: 0, len: 260, width: 18, rot: 0 },
+    { x: -140, z: 40, len: 180, width: 12, rot: Math.PI / 2 },
+    { x: 140, z: -40, len: 180, width: 12, rot: Math.PI / 2 },
+    { x: 70, z: 170, len: 140, width: 10, rot: -0.4 },
+    { x: -70, z: -170, len: 140, width: 10, rot: 0.4 }
+  ];
+  roads.forEach(function(r) { addRoadStrip(r.x, r.z, r.len, r.width, r.rot); });
+}
+
+function addRoadStrip(x, z, len, width, rot) {
+  var roadMat = new THREE.MeshStandardMaterial({ color: 0x212634, roughness: 0.92, metalness: 0.05 });
+  var road = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, width), roadMat);
+  road.position.set(x, 0.04, z);
+  road.rotation.y = rot || 0;
+  road.receiveShadow = true;
+  scene.add(road);
+
+  var sideMat = new THREE.MeshStandardMaterial({ color: 0xbdb8a5, roughness: 0.95 });
+  var sidewalk = new THREE.Mesh(new THREE.BoxGeometry(len + 8, 0.04, width + 10), sideMat);
+  sidewalk.position.set(x, 0.025, z);
+  sidewalk.rotation.y = rot || 0;
+  sidewalk.receiveShadow = true;
+  scene.add(sidewalk);
+
+  var laneMat = new THREE.MeshStandardMaterial({ color: 0xffe040, roughness: 0.6, metalness: 0.0 });
+  var lane = new THREE.Mesh(new THREE.BoxGeometry(len - 18, 0.01, 0.8), laneMat);
+  lane.position.set(x, 0.085, z);
+  lane.rotation.y = rot || 0;
+  scene.add(lane);
+}
+
+function addParkArea(x, z, w, h) {
+  var park = new THREE.Mesh(
+    new THREE.BoxGeometry(w, 0.04, h),
+    new THREE.MeshStandardMaterial({ color: 0x3b7d38, roughness: 0.98, metalness: 0.0 })
+  );
+  park.position.set(x, 0.025, z);
+  park.receiveShadow = true;
+  scene.add(park);
+
+  for (var i = 0; i < 8; i++) {
+    addTree(x + (Math.random() - 0.5) * w * 0.7, z + (Math.random() - 0.5) * h * 0.7, 0.7 + Math.random() * 0.4);
+  }
+}
+
+function addCityDistrict(x, z, scale) {
+  var count = 16 + Math.floor(Math.random() * 10);
+  for (var i = 0; i < count; i++) {
+    var bx = x + (Math.random() - 0.5) * 95 * scale;
+    var bz = z + (Math.random() - 0.5) * 95 * scale;
+    if (Math.abs(bx) < 110 && Math.abs(bz) < 95) continue;
+    addBuilding(bx, bz, scale);
+  }
+  for (var i = 0; i < 10; i++) {
+    addTree(x + (Math.random() - 0.5) * 80 * scale, z + (Math.random() - 0.5) * 80 * scale, 0.5 + Math.random() * 0.6);
+  }
+}
+
+function addStreetLights() {
+  var spots = [
+    [-120, -40], [-60, -40], [0, -40], [60, -40], [120, -40],
+    [-95, 60], [-35, 60], [35, 60], [95, 60],
+    [-120, 140], [120, 140], [-140, -120], [140, -120]
+  ];
+  spots.forEach(function(p) { addStreetLight(p[0], p[1]); });
+}
+
+function addStreetLight(x, z) {
+  worldColliders.push({ x: x, z: z, w: 0.25, d: 0.25, h: 6 });
+  var poleMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6, metalness: 0.4 });
+  var pole = new THREE.Mesh(new THREE.BoxGeometry(0.16, 6, 0.16), poleMat);
+  pole.position.set(x, 3, z);
+  pole.castShadow = true;
+  scene.add(pole);
+
+  var arm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.14, 0.16), poleMat);
+  arm.position.set(x + 0.7, 5.2, z);
+  scene.add(arm);
+
+  var light = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xfff4b8, emissive: 0xffe066, emissiveIntensity: 1.2 }));
+  light.position.set(x + 1.35, 5.2, z);
+  light.castShadow = true;
+  scene.add(light);
 }
 
 function buildTrack() {
@@ -529,21 +614,20 @@ function buildTrack() {
     }
   }
 
-  // Start/finish line (checkered)
-  var sfMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
-  var sf = new THREE.Mesh(new THREE.PlaneGeometry(roadW * 2, 2.5), sfMat);
-  sf.rotation.x = -Math.PI / 2; sf.position.set(a, 0.09, 0); scene.add(sf);
+  // subtle start line at the spawn instead of a block
+  var startMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+  var startLine = new THREE.Mesh(new THREE.PlaneGeometry(roadW * 2, 0.3), startMat);
+  startLine.rotation.x = -Math.PI / 2;
+  startLine.position.set(a, 0.065, 0);
+  scene.add(startLine);
 
-  // Grandstands
   [-1, 1].forEach(function(side) {
-    // Main stand
     var s = new THREE.Mesh(new THREE.BoxGeometry(44, 7, 9),
       new THREE.MeshStandardMaterial({ color: 0x1a3a7a, roughness: 0.7 }));
     s.position.set(0, 3.5, side * (b + 22)); s.castShadow = true; scene.add(s);
     var roof = new THREE.Mesh(new THREE.BoxGeometry(46, 0.6, 10),
       new THREE.MeshStandardMaterial({ color: 0x0d2255, roughness: 0.6 }));
     roof.position.set(0, 7.5, side * (b + 22)); scene.add(roof);
-    // Seat rows (steps)
     for (var k = 0; k < 3; k++) {
       var row = new THREE.Mesh(new THREE.BoxGeometry(42, 0.8, 2.5),
         new THREE.MeshStandardMaterial({ color: (k % 2 === 0) ? 0x224499 : 0x3355bb, roughness: 0.8 }));
@@ -551,7 +635,6 @@ function buildTrack() {
     }
   });
 
-  // Pit lane buildings
   var pitMat = new THREE.MeshStandardMaterial({ color: 0x2a2a38, roughness: 0.7 });
   var pit = new THREE.Mesh(new THREE.BoxGeometry(50, 5, 8), pitMat);
   pit.position.set(a + 8, 2.5, -10); pit.castShadow = true; scene.add(pit);
@@ -565,8 +648,6 @@ function addTrackBarriers() {
     var r1 = 102, r2 = 58;
     [r1, r2].forEach(function(r) {
       var bm = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.9, 0.8), barrierMat);
-      var nx = Math.cos(ang) * a / (Math.sqrt(Math.cos(ang) * Math.cos(ang) + Math.sin(ang) * Math.sin(ang) * a * a / (b * b)));
-      var nz = Math.sin(ang) * b / (Math.sqrt(Math.cos(ang) * Math.cos(ang) + Math.sin(ang) * Math.sin(ang) * a * a / (b * b)));
       bm.position.set(Math.cos(ang) * r * 0.8, 0.45, Math.sin(ang) * r * 0.6);
       bm.rotation.y = ang + Math.PI / 2;
       bm.castShadow = true;
@@ -576,11 +657,11 @@ function addTrackBarriers() {
 }
 
 function addTree(x, z, s) {
+  worldColliders.push({ x: x, z: z, w: 1.2 * s, d: 1.2 * s, h: 2.2 * s });
   var trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b3a1f, roughness: 1.0 });
   var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18 * s, 0.28 * s, 2 * s, 7), trunkMat);
   trunk.position.set(x, s, z); trunk.castShadow = true; scene.add(trunk);
 
-  // Varied foliage colors
   var hue = 0.28 + Math.random() * 0.08;
   var sat = 0.6 + Math.random() * 0.2;
   var lit = 0.22 + Math.random() * 0.12;
@@ -599,22 +680,36 @@ function addTree(x, z, s) {
   }
 }
 
-function addBuilding(x, z) {
-  var h = 10 + Math.random() * 35, w = 5 + Math.random() * 12;
+function addBuilding(x, z, scale) {
+  var s = scale || 1;
+  var h = 8 + Math.random() * 28 * s;
+  var w = 5 + Math.random() * 10 * s;
+  worldColliders.push({ x: x, z: z, w: w * 0.6, d: w * 0.6, h: h });
   var hue = 0.55 + Math.random() * 0.15;
   var col = new THREE.Color().setHSL(hue, 0.15 + Math.random() * 0.15, 0.3 + Math.random() * 0.25);
   var mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.75, metalness: 0.1 });
-  var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mat);
-  mesh.position.set(x, h / 2, z); mesh.castShadow = true; scene.add(mesh);
+  var base = new THREE.Mesh(new THREE.BoxGeometry(w * 0.95, 1.2, w * 0.95), new THREE.MeshStandardMaterial({ color: 0x2d2f36, roughness: 0.8 }));
+  base.position.set(x, 0.6, z);
+  base.castShadow = true;
+  scene.add(base);
 
-  // Windows glow (emissive rows)
-  if (h > 18) {
-    var winMat = new THREE.MeshStandardMaterial({ color: 0xffee88, emissive: 0xffcc44, emissiveIntensity: 0.4, roughness: 0.3 });
+  var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mat);
+  mesh.position.set(x, h / 2 + 0.6, z);
+  mesh.castShadow = true; scene.add(mesh);
+
+  if (h > 16 * s) {
+    var winMat = new THREE.MeshStandardMaterial({ color: 0xffee88, emissive: 0xffcc44, emissiveIntensity: 0.45, roughness: 0.3 });
     for (var row = 0; row < Math.floor(h / 4); row++) {
       var winRow = new THREE.Mesh(new THREE.BoxGeometry(w - 0.4, 0.6, 0.15), winMat);
-      winRow.position.set(x, 4 + row * 3.5, z + w / 2 + 0.05);
+      winRow.position.set(x, 2.5 + row * 3.2, z + w / 2 + 0.05);
       scene.add(winRow);
     }
+  }
+
+  if (Math.random() > 0.5) {
+    var antenna = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.8 + Math.random() * 2.2, 0.18), new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.35 }));
+    antenna.position.set(x + w * 0.25, h + 1.5, z - w * 0.25);
+    scene.add(antenna);
   }
 }
 
@@ -787,7 +882,8 @@ function buildCar() {
   scene.add(car);
 
   // First person cam
-  firstCam.position.set(0, 1.42, 0.82);
+  firstCam.position.set(0, 1.35, 1.55);
+  firstCam.rotation.set(0, Math.PI, 0);
   car.add(firstCam);
 }
 
@@ -929,7 +1025,8 @@ function updatePhysics() {
     if (acc) {
       var tgt = maxVel;
       if (phys.velocity < tgt) {
-        phys.velocity = Math.min(phys.velocity + phys.acceleration * powerFactor * (ratio / 3.8), tgt);
+        var accelBoost = 0.8 + g * 0.28;
+        phys.velocity = Math.min(phys.velocity + phys.acceleration * powerFactor * accelBoost, tgt);
       }
     } else if (brk) {
       if (phys.velocity > 0.5) phys.velocity -= phys.braking;
@@ -958,8 +1055,14 @@ function updatePhysics() {
   else phys.steerAngle *= (1 - phys.steerReturn);
 
   phys.heading += phys.steerAngle * sf * 0.036 * Math.sign(phys.velocity);
-  phys.x += Math.sin(phys.heading) * phys.velocity * 0.05;
-  phys.z += Math.cos(phys.heading) * phys.velocity * 0.05;
+  var nextX = phys.x + Math.sin(phys.heading) * phys.velocity * 0.05;
+  var nextZ = phys.z + Math.cos(phys.heading) * phys.velocity * 0.05;
+  if (!checkCollision(nextX, nextZ)) {
+    phys.x = nextX;
+    phys.z = nextZ;
+  } else {
+    phys.velocity *= 0.2;
+  }
 
   car.position.set(phys.x, 0, phys.z);
   car.rotation.y = phys.heading;
@@ -985,12 +1088,24 @@ function updatePhysics() {
   rl.style.opacity = atRedline ? '1' : '0';
 }
 
+function checkCollision(nextX, nextZ) {
+  var carHalfW = 1.6;
+  var carHalfD = 2.4;
+  for (var i = 0; i < worldColliders.length; i++) {
+    var c = worldColliders[i];
+    if (Math.abs(nextX - c.x) < carHalfW + c.w && Math.abs(nextZ - c.z) < carHalfD + c.d) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ========== HUD ==========
 function updateHUD() {
   var kmh = Math.abs(phys.velocity * 3.2);
   document.getElementById('spd-num').textContent = Math.round(kmh);
 
-  var maxSpd = 220;
+  var maxSpd = 80;
   var spdPct = kmh / maxSpd;
   var maxArc = 277;
   document.getElementById('speedArc').setAttribute('stroke-dasharray', (spdPct * maxArc).toFixed(1) + ' 347');
